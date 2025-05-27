@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard de Atendimentos</title>
+  <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body {
+      background-color: #f8f9fa;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    .dashboard {
+      max-width: 1600px;
+      margin: auto;
+      padding: 20px;
+    }
+    .kpi {
+      display: flex;
+      gap: 20px;
+      justify-content: center;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+    .kpi .card {
+      min-width: 240px;
+      padding: 16px;
+      border-left: 4px solid #0d6efd;
+      background: #fff;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+    .card-prof {
+      width: 240px;
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      text-align: center;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .card-prof img {
+      width: 120px;
+      height: 120px;
+      object-fit: cover;
+      border-radius: 50%;
+      margin: 12px 0;
+      border: 4px solid #dee2e6;
+    }
+    .card-prof .clinic-name {
+      font-size: 14px;
+      color: #6c757d;
+      font-weight: bold;
+    }
+    .card-prof .prof-name {
+      font-size: 16px;
+      font-weight: bold;
+      margin: 8px 0 4px;
+    }
+    .card-prof .count {
+      font-size: 14px;
+      color: #343a40;
+    }
+    .progress {
+      width: 100%;
+      height: 10px;
+      margin-top: 8px;
+      background-color: #e9ecef;
+      border-radius: 5px;
+      overflow: hidden;
+    }
+    .progress-bar {
+      height: 10px;
+      background-color: #0d6efd;
+    }
+    #clinicCards {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 20px;
+      justify-content: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="dashboard">
+    <h1 class="mb-4 text-center">📻 Painel de Atendimentos por Profissional</h1>
+
+    <div class="filters row g-2 align-items-end mb-4">
+      <div class="col-md-6">
+        <label for="clinicSelect" class="form-label">Selecionar Clínica</label>
+        <select id="clinicSelect" class="form-select">
+          <option value="">Selecione</option>
+          <option value="MATRIZ">Matriz</option>
+          <option value="ATUBA">Atuba</option>
+          <option value="BALNEARIO">Balneário</option>
+          <option value="ITAPEMA">Itapema</option>
+          <option value="JOINVILLE">Joinville</option>
+          <option value="MAFRA">Mafra</option>
+          <option value="PONTA GROSSA">Ponta Grossa</option>
+          <option value="LAGES">Lages</option>
+          <option value="FAZENDA RIO GRANDE">Fazenda Rio Grande</option>
+          <option value="SÃO JOSÉ DOS PINHAIS">São José dos Pinhais</option>
+        </select>
+      </div>
+      <div class="col-md-6">
+        <label for="fileInput" class="form-label">Anexar Planilha Excel</label>
+        <input type="file" id="fileInput" class="form-control" accept=".xlsx, .xls" />
+      </div>
+    </div>
+
+    <div class="kpi" id="kpiPanel"></div>
+    <div id="clinicCards"></div>
+  </div>
+
+  <script>
+    const photoMap = {
+      'daniele fernanda cassaro lemes da cruz': 'https://i.postimg.cc/NLLShyxJ/Daniele-jpg.png',
+      'danielle rossettim': 'https://i.postimg.cc/nXfPQ3fg/Danielle-jpg.png',
+      'isabely tomazeli': 'https://i.postimg.cc/F7L6R280/Isabely-jpg.png',
+      'marcela cavalcante rodrigues': 'https://i.postimg.cc/YjVVtpnp/Marcela-jpg.png',
+      'marillise silvaes moraes': 'https://i.postimg.cc/jWs3MC5h/Marillise-jpg.png',
+      'milena oliveira': 'https://i.postimg.cc/R3Xsy9Jx/Milena-jpg.png',
+      'munique stein scheffel': 'https://i.postimg.cc/JtLLvs5C/Munique-jpg.png'
+    };
+
+    const nameAliasMap = {
+      'danielle rossetti m.': 'danielle rossettim',
+      'daniele fernanda cassaro lemes': 'daniele fernanda cassaro lemes da cruz',
+      'marillise silvaes': 'marillise silvaes moraes',
+      'munique stein': 'munique stein scheffel'
+    };
+
+    function normalizeName(name) {
+      if (!name || typeof name !== 'string') return '';
+      const norm = name.toLowerCase()
+        .normalize("NFD").replace(/[̀-ͯ]/g, "")
+        .trim();
+      return nameAliasMap[norm] || norm;
+    }
+
+    document.getElementById("fileInput").addEventListener("change", function () {
+      const file = this.files[0];
+      const clinic = document.getElementById("clinicSelect").value;
+      if (!file || !clinic) return alert("Selecione a clínica e um arquivo válido.");
+
+      const reader = new FileReader();
+      reader.onload = function (e) {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: "array" });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const parsedData = XLSX.utils.sheet_to_json(sheet, { range: 1 });
+        const cleanedData = parsedData.map(item => {
+          const normalized = {};
+          Object.keys(item).forEach(key => {
+            const cleanKey = key.trim();
+            normalized[cleanKey] = item[key];
+          });
+          return normalized;
+        });
+
+        window.allData = (window.allData || []).concat(
+          cleanedData.map(item => ({
+            ...item,
+            Profissional: item.Profissional || '',
+            Clinica: clinic
+          }))
+        );
+
+        renderKpis();
+        renderProfessionalCards();
+      };
+      reader.readAsArrayBuffer(file);
+    });
+
+    function renderKpis() {
+      const data = Array.isArray(window.allData) ? window.allData : [];
+      if (data.length === 0) return;
+
+      const abertos = ['Em Andamento', 'Aguardando', 'Confirmado', 'Marcado'];
+      const total = data.filter(d => abertos.includes(d.Status)).length;
+
+      const porProf = {};
+      const porClinica = {};
+      data.forEach(d => {
+        if (abertos.includes(d.Status)) {
+          const prof = d.Profissional;
+          const clinica = d.Clinica;
+          porProf[prof] = (porProf[prof] || 0) + 1;
+          porClinica[clinica] = (porClinica[clinica] || 0) + 1;
+        }
+      });
+
+      const top3Prof = Object.entries(porProf).sort((a, b) => b[1] - a[1]).slice(0, 3);
+      const top3Clin = Object.entries(porClinica).sort((a, b) => b[1] - a[1]).slice(0, 3);
+
+      const kpiPanel = document.getElementById("kpiPanel");
+      kpiPanel.innerHTML = '';
+      kpiPanel.innerHTML += `<div class="card"><h5>Total Atendimentos Abertos</h5><p>${total}</p></div>`;
+      kpiPanel.innerHTML += `<div class="card"><h5>Top 3 Profissionais</h5><ul>` +
+        top3Prof.map(([prof, qt]) => `<li>${prof} (${qt})</li>`).join('') + `</ul></div>`;
+      kpiPanel.innerHTML += `<div class="card"><h5>Top 3 Clínicas</h5><ul>` +
+        top3Clin.map(([clin, qt]) => `<li>${clin} (${qt})</li>`).join('') + `</ul></div>`;
+    }
+
+    function renderProfessionalCards() {
+      const data = Array.isArray(window.allData) ? window.allData : [];
+      if (data.length === 0) return;
+
+      const profissionais = {};
+      data.forEach(item => {
+        const prof = normalizeName(item.Profissional);
+        if (!profissionais[prof]) {
+          profissionais[prof] = {
+            nome: item.Profissional,
+            total: 0,
+            atendidos: 0,
+            clinicas: new Set()
+          };
+        }
+        profissionais[prof].total++;
+        if (item.Status === 'Atendido') profissionais[prof].atendidos++;
+        profissionais[prof].clinicas.add(item.Clinica);
+      });
+
+      const container = document.getElementById("clinicCards");
+      container.innerHTML = "";
+
+      Object.entries(profissionais).forEach(([key, info]) => {
+        const img = photoMap[key] || "https://via.placeholder.com/120x120?text=Sem+Foto";
+        const percent = info.total > 0 ? Math.round((info.atendidos / info.total) * 100) : 0;
+        const card = document.createElement("div");
+        card.className = "card-prof";
+        card.innerHTML = `
+          <img src="${img}" alt="${info.nome}" />
+          <div class="prof-name">${info.nome}</div>
+          <div class="clinic-name">${[...info.clinicas].join(", ")}</div>
+          <div class="count">Atendimentos: ${info.total}</div>
+          <div class="progress"><div class="progress-bar" style="width: ${percent}%"></div></div>
+          <small>${percent}% finalizados</small>
+        `;
+        container.appendChild(card);
+      });
+    }
+  </script>
+</body>
+</html>
